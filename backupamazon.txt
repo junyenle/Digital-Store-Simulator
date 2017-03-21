@@ -1,0 +1,209 @@
+#include <iostream>
+#include <fstream>
+#include <set>
+#include <sstream>
+#include <vector>
+#include <iomanip>
+#include <algorithm>
+#include <QApplication>
+#include <QWidget>
+#include <QVBoxLayout>
+#include <QHBoxLayout>
+#include <QLabel>
+#include <QLineEdit>
+#include <QTextEdit>
+#include <QPushButton>
+#include <QListWidget>
+#include <QFormLayout>
+#include <QComboBox>
+#include <QString>
+#include <QSignalMapper>
+
+#include "product.h"
+#include "mydatastore.h"
+#include "db_parser.h"
+#include "product_parser.h"
+#include "util.h"
+#include "msort.h"
+
+using namespace std;
+
+
+int main(int argc, char* argv[])
+{
+    if(argc < 2) {
+        cerr << "Please specify a database file" << endl;
+        return 1;
+    }
+
+    /****************
+     * You may modify this allocation and type if you need
+     ****************/
+
+    QApplication app(argc, argv);
+    MyDataStore* ds = new MyDataStore;
+
+
+
+    // Instantiate the individual section and product parsers we want
+    ProductSectionParser* productSectionParser = new ProductSectionParser;
+    productSectionParser->addProductParser(new ProductBookParser);
+    productSectionParser->addProductParser(new ProductClothingParser);
+    productSectionParser->addProductParser(new ProductMovieParser);
+    UserSectionParser* userSectionParser = new UserSectionParser;
+    ReviewSectionParser* reviewSectionParser = new ReviewSectionParser;
+
+    // Instantiate the parser
+    DBParser parser;
+    parser.addSectionParser("products", productSectionParser);
+    parser.addSectionParser("users", userSectionParser);
+    parser.addSectionParser("reviews", reviewSectionParser);
+
+    // Now parse the database to populate the DataStore
+    if( parser.parse(argv[1], *ds) ) {
+        cerr << "Error parsing!" << endl;
+        return 1;
+    }
+
+    // not to grader:
+    // QApplication  construction moved up to before mydatastore construction
+    // since mydatastore has been converted into a QObject
+
+    /*******************************
+     * Create your main widget here and show it
+     */
+
+    QWidget mainWindow;
+	QHBoxLayout* fullLayout = new QHBoxLayout();
+
+// widget/layout setup
+	// left column
+	QVBoxLayout* leftLayout = new QVBoxLayout();
+	QFormLayout* searchboxLayout = new QFormLayout();
+	QLineEdit* searchInput = new QLineEdit();
+	QPushButton* searchButton = new QPushButton("Search / Refresh");
+	QComboBox* andorSelect = new QComboBox();
+	andorSelect->addItem("Products containing ALL keywords");
+	andorSelect->addItem("Products containing ANY keywords");
+
+	QComboBox* abcratingSelect = new QComboBox();
+	abcratingSelect->addItem("Sort by alphabetical order");
+	abcratingSelect->addItem("Sort by highest rating");
+
+// SEARCH CONNECTIONS
+	QObject::connect(andorSelect, SIGNAL(activated(int)), ds, SLOT(setsearchType(int)));
+	QObject::connect(abcratingSelect, SIGNAL(activated(int)), ds, SLOT(setsortType(int)));
+
+	QSignalMapper* mapper = new QSignalMapper();
+
+	// map searchButton to QString
+    mapper->setMapping(searchButton, searchInput->text());
+
+    QObject::connect(searchInput, SIGNAL(textChanged()), &app, SLOT(setMapping(searchButton, searchInput->text())));
+
+	QObject::connect(searchButton, SIGNAL(clicked()), mapper, SLOT(map()));
+
+    QObject::connect(mapper, SIGNAL(mapped(QString)), ds, SLOT(updatesearch(QString)));
+
+		// display search results
+	QListWidget* searchResults = new QListWidget;
+
+
+	searchboxLayout->addRow(searchButton, searchInput);
+	leftLayout->addLayout(searchboxLayout);
+	leftLayout->addWidget(andorSelect);
+	leftLayout->addWidget(abcratingSelect);
+	leftLayout->addWidget(searchResults);
+
+	// middle column
+	QVBoxLayout* centerLayout = new QVBoxLayout();
+	QFormLayout* productnameLine = new QFormLayout();
+	QFormLayout* productqtyLine = new QFormLayout();
+	QFormLayout* productpriceLine = new QFormLayout();
+	QFormLayout* productratingLine = new QFormLayout();
+	QFormLayout* productmiscLine = new QFormLayout();
+	QFormLayout* productmiscLine2 = new QFormLayout();
+	QLabel productStatic("Product:");
+	QLabel dollarStatic("$");
+	QLabel starsStatic("stars average rating");
+	QLabel leftStatic("left");
+	QLabel miscStatic("Misc:");
+		// remember to delete placeholders!
+	QLabel* productnameDisplay = new QLabel("Laptop");
+	QLabel* productqtyDisplay = new QLabel("17");
+	QLabel* priceDisplay = new QLabel("29.99");
+	QLabel* ratingDisplay = new QLabel("4.8");
+	QLabel* miscDisplay = new QLabel("17 inch screen");
+	QLabel* miscDisplay2 = new QLabel("comes with mouse");
+	productnameLine->addRow(&productStatic, productnameDisplay);
+	productqtyLine->addRow(productqtyDisplay, &leftStatic);
+	productpriceLine->addRow(&dollarStatic, priceDisplay);
+	productratingLine->addRow(ratingDisplay, &starsStatic);
+	productmiscLine->addRow(&miscStatic, miscDisplay);
+	productmiscLine2->addRow(&miscStatic, miscDisplay2);
+	
+	QListWidget* reviewDisplay = new QListWidget();
+
+	centerLayout->addLayout(productnameLine);
+	centerLayout->addLayout(productpriceLine);
+	centerLayout->addLayout(productqtyLine);
+	centerLayout->addLayout(productmiscLine);
+	centerLayout->addLayout(productmiscLine2);
+	centerLayout->addLayout(productratingLine);
+	centerLayout->addWidget(reviewDisplay);
+
+	// right column
+	QVBoxLayout* rightLayout = new QVBoxLayout();
+	QComboBox* userSelect = new QComboBox();
+		// user select
+	vector<User*> userlist = ds->getUsers();
+	for(vector<User*>::iterator it = userlist.begin(); it != userlist.end(); it++)
+	{
+		string name = (*it)->getName();
+		QString Qname = QString::fromStdString(name);
+		userSelect->addItem(Qname);
+	}
+
+	QLabel* creditDisplay = new QLabel("15");
+	QPushButton* addtocart = new QPushButton("Add to cart");
+	QPushButton* viewcart = new QPushButton("View cart");
+	
+	QFormLayout* userselectLine = new QFormLayout();
+	QLabel userStatic("User:");
+	userselectLine->addRow(&userStatic, userSelect);
+
+	QFormLayout* usercreditLine = new QFormLayout();
+	QLabel creditStatic("Credits:");
+	usercreditLine->addRow(&creditStatic, creditDisplay);
+
+	rightLayout->addLayout(userselectLine);
+	rightLayout->addLayout(usercreditLine);
+	rightLayout->addWidget(addtocart);
+	rightLayout->addWidget(viewcart);
+
+		//placeholder
+	QListWidget* reviewsHolder = new QListWidget;
+	rightLayout->addWidget(reviewsHolder);
+
+		//save button
+	QPushButton* saveButton = new QPushButton("SAVE");
+	rightLayout->addWidget(saveButton);
+		//quit button
+	QPushButton* quitButton = new QPushButton("QUIT (DISCARD CHANGES)");
+	rightLayout->addWidget(quitButton);
+	QObject::connect(quitButton, SIGNAL(clicked()), qApp, SLOT(quit()));
+
+
+
+// stick it together
+	fullLayout->addLayout(leftLayout);
+	fullLayout->addLayout(centerLayout);
+	fullLayout->addLayout(rightLayout);
+
+	mainWindow.setLayout(fullLayout);
+
+// show and exec
+    mainWindow.show();
+    return app.exec();
+}
+
